@@ -138,7 +138,7 @@ st.sidebar.caption("**Active Stream:** `train_FD001` (Simulating Full Run-to-Fai
 st.sidebar.caption("**Validation Criteria:** Blind RMSE via `test_FD001`")
 
 st.sidebar.markdown("---")
-st.sidebar.info("Active Development (v4.0): This suite is currently being upgraded to incorporate TensorFlow sequence modeling (LSTMs) and advanced gas-path thermodynamic physics.")
+st.sidebar.info("Active Development (v4.0): This suite is currently being upgraded to incorporate TensorFlow sequence modeling (LSTMs) and advanced gas-path thermodynamics.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Developer Links")
