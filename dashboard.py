@@ -6,6 +6,15 @@ import matplotlib.pyplot as plt
 import os
 
 st.set_page_config(layout="wide", page_title="Digital Hangar v3.5")
+
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("Digital Hangar v3.5: Comprehensive Prognostics Suite")
 st.write("Multi-Model Competitive Benchmarking and Thermodynamic Diagnostic Environment | Powered by NASA C-MAPSS Telemetry")
 
@@ -219,7 +228,7 @@ with tab3:
         
         with col_meta:
             if name == "Physics-Informed XGBoost (v2.0)":
-                st.success(f"🏆 **{name} (Deployed)**")
+                st.success(f"**{name} (Deployed)**")
             else:
                 st.info(f"**{name}**")
             st.markdown(f"**Computational Weight:**<br>{config['weightage']}", unsafe_allow_html=True)
