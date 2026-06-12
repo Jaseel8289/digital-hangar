@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import matplotlib.pyplot as plt
 import os
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 st.set_page_config(layout="wide", page_title="Digital Hangar v3.5")
 
@@ -90,6 +91,7 @@ if missing_models:
 # ==========================================
 # 3. DATA STREAM PROCESSING PIPELINE
 # ==========================================
+@st.cache_data
 def process_data(df):
     # Lane 1: Thermodynamics
     gamma = 1.4
@@ -171,8 +173,19 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("Instantaneous Aerothermal Telemetry")
     col1, col2, col3 = st.columns(3)
-    col1.metric("HPC Efficiency (η)", f"{current_snapshot['hpc_efficiency_smooth']*100:.2f}%")
-    col2.metric("EGT Safety Margin", f"{current_snapshot['egt_margin_smooth']:.1f} °R")
+    
+    # Calculate Deltas for the metrics
+    if len(visible_data) > 1:
+        prev_hpc = visible_data.iloc[-2]['hpc_efficiency_smooth']
+        prev_egt = visible_data.iloc[-2]['egt_margin_smooth']
+        delta_hpc = f"{(current_snapshot['hpc_efficiency_smooth'] - prev_hpc)*100:.3f}%"
+        delta_egt = f"{current_snapshot['egt_margin_smooth'] - prev_egt:.2f} °R"
+    else:
+        delta_hpc = None
+        delta_egt = None
+
+    col1.metric("HPC Efficiency (η)", f"{current_snapshot['hpc_efficiency_smooth']*100:.2f}%", delta=delta_hpc)
+    col2.metric("EGT Safety Margin", f"{current_snapshot['egt_margin_smooth']:.1f} °R", delta=delta_egt)
     
     if "Physics-Informed XGBoost (v2.0)" in loaded_models:
         rul_pred = max(0, float(predictions_dict["Physics-Informed XGBoost (v2.0)"][-1]))
@@ -183,18 +196,23 @@ with tab1:
         
     st.write("---")
     st.subheader("Physical Parameter Tracking History")
-    fig1, ax1 = plt.subplots(figsize=(14, 4.5))
-    ax1.plot(visible_data['time_cycles'], visible_data['hpc_efficiency_smooth'], color='tab:blue', linewidth=2.5, label='Efficiency')
-    ax1.set_xlabel("Recorded Flight Cycles", fontweight='bold')
-    ax1.set_ylabel("Efficiency (η)", color='tab:blue')
-    ax1.tick_params(axis='y', labelcolor='tab:blue')
-    ax1.grid(True, linestyle=':', alpha=0.5)
     
-    ax2 = ax1.twinx()
-    ax2.plot(visible_data['time_cycles'], visible_data['egt_margin_smooth'], color='tab:red', linewidth=2.5, label='EGT Margin')
-    ax2.set_ylabel("EGT Margin (°R)", color='tab:red')
-    ax2.tick_params(axis='y', labelcolor='tab:red')
-    st.pyplot(fig1)
+    # Interactive Plotly Dual-Axis Chart
+    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['hpc_efficiency_smooth'], 
+                              name="Efficiency (η)", line=dict(color='#1f77b4', width=3)), secondary_y=False)
+    
+    fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['egt_margin_smooth'], 
+                              name="EGT Margin (°R)", line=dict(color='#d62728', width=3)), secondary_y=True)
+    
+    fig1.update_layout(height=450, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0),
+                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig1.update_xaxes(title_text="Recorded Flight Cycles")
+    fig1.update_yaxes(title_text="Efficiency (η)", secondary_y=False, color="#1f77b4")
+    fig1.update_yaxes(title_text="EGT Margin (°R)", secondary_y=True, color="#d62728")
+    
+    st.plotly_chart(fig1, use_container_width=True)
 
 with tab2:
     st.subheader("Comparative Prognostic Alignment")
@@ -206,20 +224,28 @@ with tab2:
     )
     st.write("---")
     
-    fig2, ax3 = plt.subplots(figsize=(14, 6))
-    ax3.plot(visible_data['time_cycles'], visible_data['True_RUL'], label='True RUL (Actual Life Window)', color='black', linestyle='--', linewidth=3)
+    # Interactive Plotly Benchmarking Chart
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['True_RUL'], 
+                              name='True RUL (Actual Life Window)', 
+                              line=dict(color='white', width=3, dash='dash')))
     
     for name in selected_models:
         color = MODEL_DICTIONARY[name]["color"]
-        ax3.plot(visible_data['time_cycles'], predictions_dict[name], label=name, color=color, linewidth=2, alpha=0.8)
+        # Convert standard colors to slightly softer hex codes for better dark-mode viewing
+        color_map = {"red": "#ff4b4b", "orange": "#ffa421", "green": "#21c354", "purple": "#803df5", "magenta": "#ff2b8f"}
+        plot_color = color_map.get(color, color)
+        
+        fig2.add_trace(go.Scatter(x=visible_data['time_cycles'], y=predictions_dict[name], 
+                                  name=name, mode='lines', line=dict(color=plot_color, width=2), opacity=0.8))
     
-    ax3.set_xlabel('Accumulated Flight Cycles', fontweight='bold')
-    ax3.set_ylabel('Remaining Useful Life Estimate (Flights)', fontweight='bold')
-    ax3.legend(loc='upper right')
-    ax3.grid(True, linestyle=':', alpha=0.5)
-    ax3.set_xlim(0, max_cycles + 5)
-    ax3.set_ylim(0, max_cycles + 5)
-    st.pyplot(fig2)
+    fig2.update_layout(height=550, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0),
+                       xaxis_title="Accumulated Flight Cycles", yaxis_title="Remaining Useful Life Estimate (Flights)",
+                       legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(0,0,0,0.5)"))
+    fig2.update_xaxes(range=[0, max_cycles + 5])
+    fig2.update_yaxes(range=[0, max_cycles + 5])
+    
+    st.plotly_chart(fig2, use_container_width=True)
 
 with tab3:
     st.subheader("Detailed Model Architecture Matrix")
