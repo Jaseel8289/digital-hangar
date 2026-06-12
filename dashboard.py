@@ -6,6 +6,9 @@ import os
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# ==========================================
+# PAGE CONFIGURATION & UI OVERRIDES
+# ==========================================
 st.set_page_config(layout="wide", page_title="Digital Hangar v3.5")
 
 st.markdown("""
@@ -61,7 +64,7 @@ MODEL_DICTIONARY = {
 }
 
 # ==========================================
-# 2. LOAD ASSETS
+# 2. LOAD ASSETS (Cached for Performance)
 # ==========================================
 @st.cache_resource
 def load_models():
@@ -206,8 +209,9 @@ with tab1:
     fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['egt_margin_smooth'], 
                               name="EGT Margin (°R)", line=dict(color='#d62728', width=3)), secondary_y=True)
     
-    fig1.update_layout(height=450, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0),
-                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    # Adjusted legend position to the top-left to avoid overlap with zoom tools
+    fig1.update_layout(height=450, hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0),
+                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
     fig1.update_xaxes(title_text="Recorded Flight Cycles")
     fig1.update_yaxes(title_text="Efficiency (η)", secondary_y=False, color="#1f77b4")
     fig1.update_yaxes(title_text="EGT Margin (°R)", secondary_y=True, color="#d62728")
