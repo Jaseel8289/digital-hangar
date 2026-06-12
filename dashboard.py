@@ -247,7 +247,7 @@ with tab2:
                        xaxis_title="Accumulated Flight Cycles", yaxis_title="Remaining Useful Life Estimate (Flights)",
                        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(0,0,0,0.5)"))
     fig2.update_xaxes(range=[0, max_cycles + 5])
-    fig2.update_yaxes(range=[0, max_cycles + 5])
+    fig2.update_yaxes(rangemode="tozero")
     
     st.plotly_chart(fig2, use_container_width=True)
 
