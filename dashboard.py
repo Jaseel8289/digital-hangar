@@ -204,16 +204,16 @@ with tab1:
     fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
     fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['hpc_efficiency_smooth'], 
-                              name="Efficiency (η)", line=dict(color='#1f77b4', width=3)), secondary_y=False)
+                              name="HPC Efficiency (η)", line=dict(color='#1f77b4', width=3)), secondary_y=False)
     
     fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['egt_margin_smooth'], 
                               name="EGT Margin (°R)", line=dict(color='#d62728', width=3)), secondary_y=True)
     
-    # Adjusted legend position to the top-left to avoid overlap with zoom tools
+   
     fig1.update_layout(height=450, hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0),
                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
     fig1.update_xaxes(title_text="Recorded Flight Cycles")
-    fig1.update_yaxes(title_text="Efficiency (η)", secondary_y=False, color="#1f77b4")
+    fig1.update_yaxes(title_text="HPC Efficiency (η)", secondary_y=False, color="#1f77b4")
     fig1.update_yaxes(title_text="EGT Margin (°R)", secondary_y=True, color="#d62728")
     
     st.plotly_chart(fig1, use_container_width=True)
@@ -228,11 +228,11 @@ with tab2:
     )
     st.write("---")
     
-    # Interactive Plotly Benchmarking Chart
+  
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['True_RUL'], 
                               name='True RUL (Actual Life Window)', 
-                              line=dict(color='white', width=3, dash='dash')))
+                              line=dict(color='gray', width=3, dash='dash')))
     
     for name in selected_models:
         color = MODEL_DICTIONARY[name]["color"]
