@@ -145,9 +145,9 @@ st.sidebar.caption("**Validation Criteria:** Blind RMSE via `test_FD001`")
 st.sidebar.markdown("---")
 st.sidebar.info("Active Development (v4.0): This suite is currently being upgraded to incorporate TensorFlow sequence modeling (LSTMs) and advanced gas-path thermodynamics.")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Developer Links")
-st.sidebar.markdown("[View Source Code on GitHub](https://github.com/Jaseel8289/digital-hangar/tree/main)")
+#st.sidebar.markdown("---")
+#st.sidebar.markdown("### Developer Links")
+#st.sidebar.markdown("[View Source Code on GitHub](https://github.com/Jaseel8289/digital-hangar/tree/main)")
 
 # Ingestion structures for inferences
 physics_features = visible_data[['time_cycles', 'hpc_efficiency_smooth', 'egt_margin_smooth']]
