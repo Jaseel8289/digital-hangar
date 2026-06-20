@@ -34,14 +34,42 @@ MODEL_DICTIONARY = {
         "features": "19 Features x 50-Flight 3D Sliding Window",
         "mae": "9.02", "r2": "92.4%",
         "weightage": "Heavy (5x Convolutional LSTMs averaged in real-time)",
-        "desc": "The ultimate State-of-the-Art architecture. Evaluates 50 flights of chronological history simultaneously. Trained with a custom thermodynamic loss function that heavily penalizes the network for violating the Law of Entropy (predicting RUL increasing over time)."
+        "desc": "The ultimate State-of-the-Art architecture. Evaluates 50 flights of chronological history simultaneously. Trained with a custom thermodynamic loss function that heavily penalizes the network for predicting an increasing RUL)."
     },
-    "Physics-Informed XGBoost (Legacy)": {
+    "Physics-Informed XGBoost (v2.0)": {
         "file": "physics_xgb_model.pkl", "type": "physics", "color": "red",
         "features": "3 Columns: Time Cycles, HPC Efficiency (η), EGT Margin",
         "mae": "21.10", "r2": "78.4%",
-        "weightage": "Light (Physics Engine + Gradient Boosting Trees)",
-        "desc": "The previous operational framework. Translates raw telemetry into pure thermodynamics (Brayton Cycle) prior to ingestion. Highly effective but constrained by its 2D architecture (lacks chronological memory)."
+        "weightage": "Ultra-Light (Physics Engine + Minimal Trees)",
+        "desc": "The primary operational framework. Completely abandons statistical guessing by translating raw telemetry into pure thermodynamics (Brayton Cycle) prior to ingestion. Because the input features represent the true physical root cause of engine failure, the algorithm achieves superior accuracy on unseen data with minimal computational overhead."
+    },
+    "Random Forest Regressor (Baseline)": {
+        "file": "turbofan_god_model.pkl", "type": "raw", "color": "orange",
+        "features": "22 Columns: Time Cycles + All 21 Raw Sensor Streams",
+        "mae": "31.45", "r2": "54.2%",
+        "weightage": "Heavy (100 Deep Trees, Unfiltered High-Dimensionality)",
+        "desc": "A foundational statistical baseline. Evaluates all available high-noise data to identify statistical correlations. Susceptible to overfitting, resulting in a highly jagged and 'steppy' prediction curve."
+    },
+    "Basic Gradient Boosting (Raw Sensors)": {
+        "file": "watchdog.pkl", "type": "raw", "color": "green",
+        "features": "22 Columns: Time Cycles + All 21 Raw Sensor Streams",
+        "mae": "29.12", "r2": "61.8%",
+        "weightage": "Moderate (Sequential Boosting, Full Dimensionality)",
+        "desc": "An architectural upgrade utilizing sequential error correction. Smooths out predictions compared to the Random Forest, but absolute accuracy remains fundamentally constrained by un-smoothed sensor noise."
+    },
+    "XGBoost (Feature Selection)": {
+        "file": "xgb_greedy.pkl", "type": "engineered", "color": "purple",
+        "features": "6 Columns: Time Cycles, s_11/s_15/s_2 rolling averages, Custom Interaction Ratios",
+        "mae": "25.80", "r2": "69.5%",
+        "weightage": "Light (Reduced Dimensionality, 6 Features)",
+        "desc": "A refined ensemble leveraging 5-cycle rolling averages and engineered cross-products (e.g., pseudo-efficiency) to isolate degradation trends. Eliminating 18 high-noise sensor streams resulted in a significant accuracy improvement."
+    },
+    "XGBoost (Hyperparameter Optimized)": {
+        "file": "xgb_tuned.pkl", "type": "engineered", "color": "magenta",
+        "features": "6 Columns: Time Cycles, s_11/s_15/s_2 rolling averages, Custom Interaction Ratios",
+        "mae": "24.35", "r2": "72.1%",
+        "weightage": "Optimized (Shallow Depth, Controlled Learning Rate)",
+        "desc": "The empirical limit of purely statistical approaches on this dataset. Utilizing constrained tree depth and minimized learning rates prevents the memorization of anomalies, yielding a stable degradation curve."
     }
 }
 
@@ -51,25 +79,28 @@ MODEL_DICTIONARY = {
 @st.cache_resource
 def load_models():
     loaded_pinn = []
-    loaded_xgb = None
+    loaded_legacy = {}
     missing_models = []
     
     # Load the PINN Ensemble
     pinn_config = MODEL_DICTIONARY["CNN-PINN Ensemble (SOTA v4.0)"]
     for f in pinn_config["files"]:
         if os.path.exists(f):
-            # compile=False allows us to load the model without needing to define the custom physics loss!
             loaded_pinn.append(tf.keras.models.load_model(f, compile=False))
         else:
-            missing_models.append(f)
+            if f not in missing_models:
+                missing_models.append(f)
             
-    # Load the old XGBoost model (if it exists)
-    xgb_file = MODEL_DICTIONARY["Physics-Informed XGBoost (Legacy)"]["file"]
-    if os.path.exists(xgb_file):
-        with open(xgb_file, 'rb') as f:
-            loaded_xgb = pickle.load(f)
+    # Load the legacy models (Random Forest, XGBoost, etc.)
+    for name, config in MODEL_DICTIONARY.items():
+        if name != "CNN-PINN Ensemble (SOTA v4.0)":
+            if os.path.exists(config["file"]):
+                with open(config["file"], 'rb') as f:
+                    loaded_legacy[name] = pickle.load(f)
+            else:
+                missing_models.append(config["file"])
             
-    return loaded_pinn, loaded_xgb, missing_models
+    return loaded_pinn, loaded_legacy, missing_models
 
 @st.cache_data
 def load_data():
@@ -78,40 +109,50 @@ def load_data():
     df.columns = ['unit_number', 'time_cycles', 'op_setting_1', 'op_setting_2', 'op_setting_3'] + sensor_names
     return df
 
-pinn_ensemble, loaded_xgb, missing_models = load_models()
+pinn_ensemble, loaded_legacy_models, missing_models = load_models()
 raw_df = load_data()
 
 if missing_models:
-    st.sidebar.warning(f"Missing ensemble components. Make sure {missing_models[0]} is in the folder!")
+    st.sidebar.warning(f"Missing models: {', '.join(missing_models)}")
 
 # ==========================================
 # 3. DATA STREAM PROCESSING PIPELINE
 # ==========================================
 @st.cache_data
 def process_data(df):
-    """Processes data for BOTH the old XGBoost model and the new PINN model."""
+    """Processes data for BOTH the legacy models and the new PINN model."""
     processed_df = df.copy()
     
-    # --- LANE 1: Legacy XGBoost Processing ---
+    # --- LANE 1: Legacy XGBoost Processing (v2.0 & v3.0) ---
     gamma = 1.4
     actual_rise = processed_df['s_3'] - processed_df['s_1']
-    pressure_ratio = processed_df['s_7'] - processed_df['s_5'] # Safe fallback
-    processed_df['hpc_efficiency'] = np.where(actual_rise > 0, 1.0 / actual_rise, 0) # Simplified for display
+    pressure_ratio = processed_df['s_7'] - processed_df['s_5']
+    processed_df['hpc_efficiency'] = np.where(actual_rise > 0, 1.0 / actual_rise, 0)
     processed_df['egt_margin'] = 1440.0 - processed_df['s_4']
     processed_df['hpc_efficiency_smooth'] = processed_df.groupby('unit_number')['hpc_efficiency'].transform(lambda x: x.rolling(5, min_periods=1).mean())
     processed_df['egt_margin_smooth'] = processed_df.groupby('unit_number')['egt_margin'].transform(lambda x: x.rolling(5, min_periods=1).mean())
     
+    processed_df['s_11_roll5'] = processed_df.groupby('unit_number')['s_11'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    processed_df['s_15_roll5'] = processed_df.groupby('unit_number')['s_15'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    processed_df['s_2_roll5'] = processed_df.groupby('unit_number')['s_2'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    processed_df['pseudo_efficiency'] = processed_df['s_11_roll5'] / processed_df['s_2_roll5']
+    processed_df['bypass_pressure_interaction'] = processed_df['s_15_roll5'] / processed_df['s_11_roll5']
+    
     # --- LANE 2: PINN 3D Tensor Processing ---
+    pinn_df = df.copy()
+    
     # Drop flatlines
     flat_cols = ['op_setting_3', 's_1', 's_10', 's_18', 's_19']
-    pinn_df = processed_df.drop(columns=flat_cols)
+    pinn_df = pinn_df.drop(columns=flat_cols)
     
     # Thermodynamic Features
     pinn_df['hpc_temp_rise'] = pinn_df['s_3'] - pinn_df['s_2']
     pinn_df['thermo_ratio'] = pinn_df['s_11'] / pinn_df['s_4']
     
+    # Explicitly isolate the 19 PINN features
+    feature_cols = [col for col in pinn_df.columns if col.startswith('s_') or col in ['hpc_temp_rise', 'thermo_ratio']]
+    
     # Scaling
-    feature_cols = [col for col in pinn_df.columns if col not in ['unit_number', 'time_cycles']]
     scaler = MinMaxScaler()
     pinn_df[feature_cols] = scaler.fit_transform(pinn_df[feature_cols])
     
@@ -148,7 +189,6 @@ st.sidebar.success("v4.0 ACTIVE: 3D CNN-PINN Pipeline Operational.")
 # ==========================================
 @st.cache_data
 def generate_pinn_predictions(engine_id):
-    """Generates the RUL line for the entire engine history instantly via batching."""
     if not pinn_ensemble:
         return np.zeros(max_cycles)
         
@@ -156,11 +196,9 @@ def generate_pinn_predictions(engine_id):
     num_cycles = len(engine_vals)
     batch_X = []
     
-    # Recreate the 50-flight sliding window
     for i in range(1, num_cycles + 1):
         window = engine_vals[:i]
         if len(window) < 50:
-            # Pad early flights by repeating the first row
             pad_size = 50 - len(window)
             pad_array = np.tile(window[0], (pad_size, 1))
             window = np.vstack((pad_array, window))
@@ -168,24 +206,37 @@ def generate_pinn_predictions(engine_id):
             window = window[-50:]
         batch_X.append(window)
         
-    batch_X = np.array(batch_X) # Shape: [Cycles, 50, Features]
+    batch_X = np.array(batch_X)
     
-    # Query all 5 AI models
     ensemble_preds = []
     for model in pinn_ensemble:
         preds = model.predict(batch_X, verbose=0).flatten()
         ensemble_preds.append(preds)
         
-    # Wisdom of crowds (Average)
     return np.mean(ensemble_preds, axis=0)
 
-# Generate Predictions for the Graph
-pinn_rul_line = generate_pinn_predictions(selected_engine)
+# Build feature blocks for legacy models
+physics_features = engine_data_raw[['time_cycles', 'hpc_efficiency_smooth', 'egt_margin_smooth']]
+raw_features = engine_data_raw[['time_cycles'] + [f's_{i}' for i in range(1, 22)]]
+engineered_features = engine_data_raw[['time_cycles', 's_11_roll5', 's_15_roll5', 's_2_roll5', 'pseudo_efficiency', 'bypass_pressure_interaction']]
 
-xgb_rul_line = None
-if loaded_xgb:
-    xgb_features = engine_data_raw[['time_cycles', 'hpc_efficiency_smooth', 'egt_margin_smooth']]
-    xgb_rul_line = loaded_xgb.predict(xgb_features)
+predictions_dict = {}
+
+# Populate predictions for ALL available models
+for name, config in MODEL_DICTIONARY.items():
+    if name == "CNN-PINN Ensemble (SOTA v4.0)":
+        if pinn_ensemble:
+            predictions_dict[name] = generate_pinn_predictions(selected_engine)
+    else:
+        if name in loaded_legacy_models:
+            model = loaded_legacy_models[name]
+            m_type = config["type"]
+            if m_type == "physics":
+                predictions_dict[name] = model.predict(physics_features)
+            elif m_type == "engineered":
+                predictions_dict[name] = model.predict(engineered_features)
+            else:
+                predictions_dict[name] = model.predict(raw_features)
 
 # ==========================================
 # 6. NAVIGATION STRUCTURE
@@ -200,7 +251,6 @@ with tab1:
     st.subheader("Instantaneous Aerothermal Telemetry")
     col1, col2, col3 = st.columns(3)
     
-    # Calculate Deltas for the metrics
     if len(visible_data) > 1:
         prev_hpc = visible_data.iloc[-2]['hpc_efficiency_smooth']
         prev_egt = visible_data.iloc[-2]['egt_margin_smooth']
@@ -213,8 +263,8 @@ with tab1:
     col1.metric("HPC Efficiency (η)", f"{current_snapshot['hpc_efficiency_smooth']*100:.2f}%", delta=delta_hpc)
     col2.metric("EGT Safety Margin", f"{current_snapshot['egt_margin_smooth']:.1f} °R", delta=delta_egt)
     
-    if len(pinn_ensemble) > 0:
-        current_rul_pred = max(0, float(pinn_rul_line[current_cycle - 1]))
+    if "CNN-PINN Ensemble (SOTA v4.0)" in predictions_dict:
+        current_rul_pred = max(0, float(predictions_dict["CNN-PINN Ensemble (SOTA v4.0)"][current_cycle - 1]))
         if current_rul_pred <= 30:
             col3.error(f"MAINTENANCE REQUIRED: Overhaul within {int(current_rul_pred)} flights")
         else:
@@ -223,12 +273,9 @@ with tab1:
     st.write("---")
     st.subheader("Physical Parameter Tracking History")
     
-    # Interactive Plotly Dual-Axis Chart
     fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-    
     fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['hpc_efficiency_smooth'], 
                               name="HPC Efficiency (η)", line=dict(color='#1f77b4', width=3)), secondary_y=False)
-    
     fig1.add_trace(go.Scatter(x=visible_data['time_cycles'], y=visible_data['egt_margin_smooth'], 
                               name="EGT Margin (°R)", line=dict(color='#d62728', width=3)), secondary_y=True)
     
@@ -241,8 +288,15 @@ with tab1:
     st.plotly_chart(fig1, use_container_width=True)
 
 with tab2:
-    st.subheader("Prognostic Alignment: PINN vs Legacy XGBoost")
-    st.write("Observe how the Deep Learning PINN strictly follows chronological trends, whereas the legacy XGBoost suffers from cycle-to-cycle 'stepping' due to its 2D flat architecture.")
+    st.subheader("Prognostic Alignment: Evolution of Architectures")
+    
+    # Restore the multiselect!
+    available_models = list(predictions_dict.keys())
+    selected_models = st.multiselect(
+        "Toggle models on/off for graphical intersection analysis:", 
+        options=available_models, 
+        default=available_models
+    )
     st.write("---")
     
     fig2 = go.Figure()
@@ -251,17 +305,17 @@ with tab2:
                               name='True RUL (Actual Life Window)', 
                               line=dict(color='gray', width=3, dash='dash')))
     
-    # CNN-PINN SOTA
-    if len(pinn_ensemble) > 0:
-        fig2.add_trace(go.Scatter(x=engine_data_raw['time_cycles'], y=pinn_rul_line, 
-                                  name="CNN-PINN Ensemble (v4.0)", mode='lines', 
-                                  line=dict(color='#00f2fe', width=3), opacity=0.9))
+    # Plot dynamically based on selection
+    for name in selected_models:
+        color = MODEL_DICTIONARY[name]["color"]
+        color_map = {"cyan": "#00f2fe", "red": "#ff4b4b", "orange": "#ffa421", "green": "#21c354", "purple": "#803df5", "magenta": "#ff2b8f"}
+        plot_color = color_map.get(color, color)
         
-    # Legacy XGBoost
-    if loaded_xgb:
-        fig2.add_trace(go.Scatter(x=engine_data_raw['time_cycles'], y=xgb_rul_line, 
-                                  name="XGBoost Baseline (v2.0)", mode='lines', 
-                                  line=dict(color='#ff4b4b', width=2), opacity=0.7))
+        # Make the PINN stand out slightly thicker
+        line_width = 3 if "PINN" in name else 2
+        
+        fig2.add_trace(go.Scatter(x=engine_data_raw['time_cycles'], y=predictions_dict[name], 
+                                  name=name, mode='lines', line=dict(color=plot_color, width=line_width), opacity=0.85))
     
     fig2.update_layout(height=550, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0),
                        xaxis_title="Accumulated Flight Cycles", yaxis_title="Remaining Useful Life Estimate (Flights)",
@@ -289,6 +343,7 @@ with tab3:
             
         with col_details:
             err1, err2 = st.columns(2)
+            # Hardcoded MAE check to match the dictionary formatting
             err1.metric("MAE (Mean Absolute Error)", config["mae"])
             err2.metric("R² Score / Efficacy", config["r2"])
             
