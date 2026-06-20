@@ -1,4 +1,4 @@
-# Digital Hangar v3.5: Turbofan Prognostics and MLOps Suite
+# Digital Hangar v4.0: Turbofan Prognostics and MLOps Suite
 
 An engineering-focused predictive maintenance (PdM) dashboard built to monitor, benchmark, and evaluate multi-generation Machine Learning pipelines against simulated run-to-failure jet engine telemetry.
 Live Web Application: https://digital-hangar-turbofan-prognostics.streamlit.app/
@@ -9,6 +9,12 @@ Live Web Application: https://digital-hangar-turbofan-prognostics.streamlit.app/
 - Training Input: train_FD001.txt (Run-to-failure degradation trajectories)
 - Validation Target: Blind Remaining Useful Life (RUL) metrics via test_FD001
 
+## v4.0 (Active Development)
+Current and future architecture updates include:
+- Deep Learning Integration: Transitioning from static tree-based models to temporal sequence modeling using TensorFlow/Keras (LSTMs) to capture the exact velocity of engine degradation over time.
+- Enhanced Physics Engines: Expanding the thermodynamic lane to include deeper gas path analysis and Virtual Sensor approximations for unreadable high-temperature turbine states.
+- Dimensionality Reduction: Automating data compression using Principal Component Analysis (PCA) to mathematically eliminate sensor noise prior to Neural Network ingestion.
+- 
 ## System Architecture and Pipeline Lanes
 The suite ingests raw data and processes it through three distinct inference lanes:
 1. Thermodynamic Lane (Deployed): Calculates isentropic compressor efficiency via the Brayton Cycle and maps thermal breakdown via Exhaust Gas Temperature (EGT) Margins.
@@ -21,12 +27,6 @@ The suite ingests raw data and processes it through three distinct inference lan
 - XGBoost (Feature Selection): RMSE 34.10
 - Basic Gradient Boosting (Raw Sensors): RMSE 38.50
 - Random Forest Regressor (Baseline): RMSE 41.20
-
-## Future Roadmap (v4.0 Active Development)
-This suite is under continuous active development to reach deep-learning industry standards. Upcoming architecture updates include:
-- Deep Learning Integration: Transitioning from static tree-based models to temporal sequence modeling using TensorFlow/Keras (LSTMs) to capture the exact velocity of engine degradation over time.
-- Enhanced Physics Engines: Expanding the thermodynamic lane to include deeper gas path analysis and Virtual Sensor approximations for unreadable high-temperature turbine states.
-- Dimensionality Reduction: Automating data compression using Principal Component Analysis (PCA) to mathematically eliminate sensor noise prior to Neural Network ingestion.
 
 ## How To Run Locally
 1. Clone the repository
