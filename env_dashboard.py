@@ -39,8 +39,10 @@ def process_cbn_data(filename):
     # Load raw complex environment data
     cols = ['unit', 'cycles', 'alt', 'mach', 'tra'] + [f's_{i}' for i in range(1, 22)]
     try:
-        raw_df = pd.read_csv(filename, delim_whitespace=True, names=cols)
-    except FileNotFoundError:
+        # FIXED: Swapped delim_whitespace=True for sep=r'\s+' for Streamlit Cloud compatibility
+        raw_df = pd.read_csv(filename, sep=r'\s+', names=cols)
+    except Exception as e:
+        print(f"Data Loading Error: {e}")
         return None, None, None
         
     # Thermodynamic Feature Engineering
