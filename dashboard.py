@@ -103,20 +103,50 @@ def load_models():
     return loaded_pinn, loaded_legacy, missing_models
 
 @st.cache_data
-def load_data():
-    df = pd.read_csv('train_FD001.txt', sep=r'\s+', header=None)
-    sensor_names = [f's_{i}' for i in range(1, 22)]
-    df.columns = ['unit_number', 'time_cycles', 'op_setting_1', 'op_setting_2', 'op_setting_3'] + sensor_names
-    return df
+def load_data(filename):
+    try:
+        df = pd.read_csv(filename, sep=r'\s+', header=None)
+        sensor_names = [f's_{i}' for i in range(1, 22)]
+        df.columns = ['unit_number', 'time_cycles', 'op_setting_1', 'op_setting_2', 'op_setting_3'] + sensor_names
+        return df
+    except FileNotFoundError:
+        return None
+
+# ==========================================
+# 3. SIDEBAR CONTROLS & DATASET SELECTION
+# ==========================================
+st.sidebar.header("Fleet Telemetry Controls")
+
+dataset_choice = st.sidebar.selectbox(
+    "Select NASA C-MAPSS Dataset",
+    ["FD001", "FD003"],
+    index=0
+)
+dataset_filename = f"train_{dataset_choice}.txt"
 
 pinn_ensemble, loaded_legacy_models, missing_models = load_models()
-raw_df = load_data()
+raw_df = load_data(dataset_filename)
+
+if raw_df is None:
+    st.error(f"Dataset {dataset_filename} not found. Please ensure it is in the directory.")
+    st.stop()
 
 if missing_models:
     st.sidebar.warning(f"Missing models: {', '.join(missing_models)}")
 
 # ==========================================
-# 3. DATA STREAM PROCESSING PIPELINE
+# 4. DATASET DESCRIPTIONS
+# ==========================================
+with st.expander("View Dataset Operating Conditions and Fault Modes"):
+    st.markdown("""
+    **FD001:** 1 Operating Condition (Sea Level Static), 1 Fault Mode (HPC Degradation)
+    **FD003:** 1 Operating Condition (Sea Level Static), 2 Fault Modes (HPC and Fan Degradation)
+    
+    This version of the dashboard focuses on comparative benchmarking between classical Machine Learning and the SOTA CNN-PINN Ensemble in static environments.
+    """)
+
+# ==========================================
+# 5. DATA STREAM PROCESSING PIPELINE
 # ==========================================
 @st.cache_data
 def process_data(df):
@@ -161,9 +191,8 @@ def process_data(df):
 processed_df, pinn_df, pinn_features = process_data(raw_df)
 
 # ==========================================
-# 4. SIDEBAR TIMELINE MANAGER & ENVIRONMENT
+# 6. SIDEBAR TIMELINE MANAGER & ENVIRONMENT
 # ==========================================
-st.sidebar.header("Fleet Telemetry Controls")
 selected_engine = st.sidebar.selectbox("Select Aircraft Engine ID", processed_df['unit_number'].unique())
 
 engine_data_raw = processed_df[processed_df['unit_number'] == selected_engine].copy()
@@ -185,10 +214,10 @@ st.sidebar.markdown("---")
 st.sidebar.success("v4.0 ACTIVE: 3D CNN-PINN Pipeline Operational.")
 
 # ==========================================
-# 5. BATCH PREDICTION LOGIC
+# 7. BATCH PREDICTION LOGIC
 # ==========================================
 @st.cache_data
-def generate_pinn_predictions(engine_id):
+def generate_pinn_predictions(engine_id, dataset_name):
     if not pinn_ensemble:
         return np.zeros(max_cycles)
         
@@ -226,7 +255,7 @@ predictions_dict = {}
 for name, config in MODEL_DICTIONARY.items():
     if name == "CNN-PINN Ensemble (SOTA v4.0)":
         if pinn_ensemble:
-            predictions_dict[name] = generate_pinn_predictions(selected_engine)
+            predictions_dict[name] = generate_pinn_predictions(selected_engine, dataset_choice)
     else:
         if name in loaded_legacy_models:
             model = loaded_legacy_models[name]
@@ -239,7 +268,7 @@ for name, config in MODEL_DICTIONARY.items():
                 predictions_dict[name] = model.predict(raw_features)
 
 # ==========================================
-# 6. NAVIGATION STRUCTURE
+# 8. NAVIGATION STRUCTURE
 # ==========================================
 tab1, tab2, tab3 = st.tabs([
     "Live Operations & Diagnostics", 
@@ -268,7 +297,7 @@ with tab1:
         if current_rul_pred <= 30:
             col3.error(f"MAINTENANCE REQUIRED: Overhaul within {int(current_rul_pred)} flights")
         else:
-            col3.metric("CNN-PINN Predicted Lifespan", f"{int(current_rul_pred)} Flights")
+            col3.metric("CNN-PINN Predicted Lifespan", f"{int(current_rul_pred + current_cycle)} Flights")
         
     st.write("---")
     st.subheader("Physical Parameter Tracking History")
@@ -290,7 +319,6 @@ with tab1:
 with tab2:
     st.subheader("Prognostic Alignment: Evolution of Architectures")
     
-    # Restore the multiselect!
     available_models = list(predictions_dict.keys())
     selected_models = st.multiselect(
         "Toggle models on/off for graphical intersection analysis:", 
@@ -343,7 +371,6 @@ with tab3:
             
         with col_details:
             err1, err2 = st.columns(2)
-            # Hardcoded MAE check to match the dictionary formatting
             err1.metric("MAE (Mean Absolute Error)", config["mae"])
             err2.metric("R² Score / Efficacy", config["r2"])
             
