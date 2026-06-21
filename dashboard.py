@@ -211,6 +211,11 @@ st.sidebar.write(f"**Altitude Parameter:** `{current_snapshot['op_setting_1']:.4
 st.sidebar.write(f"**Mach Parameter:** `{current_snapshot['op_setting_2']:.4f}`")
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("Post-Processing Filters")
+apply_smoothing = st.sidebar.checkbox("Apply Exponential Smoothing (EMA)", value=True, 
+                                      help="Smooths out prediction volatility across all active models.")
+
+st.sidebar.markdown("---")
 st.sidebar.success("v4.0 ACTIVE: 3D CNN-PINN Pipeline Operational.")
 
 # ==========================================
@@ -267,9 +272,16 @@ for name, config in MODEL_DICTIONARY.items():
             else:
                 predictions_dict[name] = model.predict(raw_features)
 
+# Apply EMA Smoothing if toggled
+if apply_smoothing:
+    for name in predictions_dict:
+        predictions_dict[name] = pd.Series(predictions_dict[name]).ewm(span=10, adjust=False).mean().values
+
 # ==========================================
 # 8. NAVIGATION STRUCTURE
 # ==========================================
+st.info("Instruction: Move the Timeline Position slider in the sidebar to observe the real-time telemetry updates and prognostic curve progression.")
+
 tab1, tab2, tab3 = st.tabs([
     "Live Operations & Diagnostics", 
     "Comparative Benchmarking", 
