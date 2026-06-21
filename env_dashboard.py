@@ -39,7 +39,7 @@ def process_cbn_data(filename):
     # Load raw complex environment data
     cols = ['unit', 'cycles', 'alt', 'mach', 'tra'] + [f's_{i}' for i in range(1, 22)]
     try:
-        # FIXED: Swapped delim_whitespace=True for sep=r'\s+' for Streamlit Cloud compatibility
+        # Fixed delimiter for Streamlit Cloud compatibility
         raw_df = pd.read_csv(filename, sep=r'\s+', names=cols)
     except Exception as e:
         print(f"Data Loading Error: {e}")
@@ -81,7 +81,7 @@ st.sidebar.header("Fleet Telemetry Controls")
 dataset_choice = st.sidebar.selectbox(
     "Select NASA C-MAPSS Dataset",
     ["FD002", "FD004"],
-    index=1 # Default to FD004
+    index=1
 )
 dataset_filename = f"train_{dataset_choice}.txt"
 
@@ -97,6 +97,11 @@ if model is None:
 
 selected_engine = st.sidebar.selectbox("Select Aircraft Engine ID", raw_df['unit'].unique())
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Post-Processing Filters")
+apply_smoothing = st.sidebar.checkbox("Apply Exponential Smoothing (EMA)", value=True, 
+                                      help="Smooths out transition noise between flight regimes.")
+
 engine_raw = raw_df[raw_df['unit'] == selected_engine].copy()
 engine_norm = norm_df[norm_df['unit'] == selected_engine].copy()
 max_cycles = int(engine_raw['cycles'].max())
@@ -110,11 +115,9 @@ with st.expander("View Dataset Operating Conditions and Fault Modes"):
     st.markdown("""
     **FD002:** 6 Operating Conditions (Dynamic Flight Envelope), 1 Fault Mode (HPC Degradation)
     **FD004:** 6 Operating Conditions (Dynamic Flight Envelope), 2 Fault Modes (HPC and Fan Degradation)
-    
-    The neural network evaluating this data was trained exclusively on FD004, enabling it to generalize across all sub-variants by processing the highest degree of operational complexity.
     """)
 
-st.info("Instruction: Move the Timeline Position slider in the sidebar to observe how Condition-Based Normalization clarifies the degradation trend compared to the raw sensor volatility.")
+st.write("Instruction: Move the Timeline Position slider in the sidebar to observe how Condition-Based Normalization clarifies the degradation trend compared to the raw sensor volatility.")
 
 # ==========================================
 # 4. TABBED NAVIGATION
@@ -126,7 +129,6 @@ with tab1:
     current_snapshot = engine_raw[engine_raw['cycles'] == current_cycle].iloc[0]
     current_regime = int(current_snapshot['regime'])
 
-    # Assigning colors/labels to regimes purely for visualization
     regime_labels = {
         0: ("Cruise", "blue"), 1: ("Takeoff", "red"), 2: ("Climb", "orange"), 
         3: ("Descent", "green"), 4: ("Hold", "purple"), 5: ("Approach", "cyan")
@@ -141,18 +143,16 @@ with tab1:
     st.write("---")
 
     st.subheader("2. Condition-Based Normalization")
-    st.write("By clustering the environment into 6 operational regimes and scaling the thermodynamic parameters within those specific regimes, the pipeline extracts the underlying degradation trend from the environmental noise.")
+    st.write("By clustering the environment into 6 operational regimes and scaling parameters, the pipeline extracts the degradation trend from noise.")
 
     visible_raw = engine_raw[engine_raw['cycles'] <= current_cycle]
     visible_norm = engine_norm[engine_norm['cycles'] <= current_cycle]
 
     fig_cbn = make_subplots(rows=1, cols=2, subplot_titles=("Raw Telemetry", "CBN Normalized Tensor (Model Input)"))
 
-    # Raw Sensor 4
     fig_cbn.add_trace(go.Scatter(x=visible_raw['cycles'], y=visible_raw['s_4'], 
                                  name="Raw HPC Temp", line=dict(color='#ff4b4b', width=2)), row=1, col=1)
 
-    # Normalized Sensor 4
     fig_cbn.add_trace(go.Scatter(x=visible_norm['cycles'], y=visible_norm['s_4'], 
                                  name="Normalized HPC Temp", line=dict(color='#00f2fe', width=2)), row=1, col=2)
 
@@ -183,9 +183,14 @@ with tab2:
             
         return model.predict(np.array(batch_X), verbose=0).flatten()
 
-    pinn_rul_line = generate_universal_predictions(selected_engine, dataset_choice)
+    raw_pinn_rul_line = generate_universal_predictions(selected_engine, dataset_choice)
 
-    # Final RUL Metric Boxes (Placed prominently at the top of the tab)
+    # Apply EMA Smoothing if toggled
+    if apply_smoothing:
+        pinn_rul_line = pd.Series(raw_pinn_rul_line).ewm(span=10, adjust=False).mean().values
+    else:
+        pinn_rul_line = raw_pinn_rul_line
+
     if model is not None:
         current_rul = max(0, float(pinn_rul_line[current_cycle - 1]))
         predicted_lifespan = current_cycle + current_rul
@@ -203,14 +208,21 @@ with tab2:
             
         st.write("---")
 
+    st.warning("""
+    **Research Ongoing: The Dynamic Envelope Challenge**
+    
+    1. Early Flatlining (Cycles 0-100): Prediction is intentional as Ground Truth RUL was clipped at 125 flights during training.
+    2. Accuracy Trends: Prediction error increases from sub-10 flights (FD001/FD003) to ~20 flights (FD002/FD004) due to environmental complexity.
+    3. Non-Monotonic Swings: Sudden changes in operating regimes occasionally confuse the model, causing temporary, unrealistic RUL increases.
+    
+    This dashboard demonstrates boundary limitations of single-model architectures on dynamic datasets. Future solutions involve Regime-Specific Expert Ensembles or Temporal Attention Mechanisms.
+    """)
+
     fig_rul = go.Figure()
 
-    # Ground Truth
     fig_rul.add_trace(go.Scatter(x=engine_raw['cycles'], y=engine_raw['True_RUL'], 
-                                 name='True RUL (Actual Life Window)', 
-                                 line=dict(color='gray', width=3, dash='dash')))
+                                 name='True RUL', line=dict(color='gray', width=3, dash='dash')))
 
-    # PINN Prediction
     if model is not None:
         fig_rul.add_trace(go.Scatter(x=engine_raw['cycles'], y=pinn_rul_line, 
                                      name="Universal PINN Output", mode='lines', 
