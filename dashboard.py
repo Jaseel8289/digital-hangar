@@ -301,10 +301,11 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     if len(visible_data) > 1:
-        prev_hpc = visible_data.iloc[-2]['hpc_efficiency_smooth']
-        prev_egt = visible_data.iloc[-2]['egt_margin_smooth']
-        delta_hpc = f"{(current_snapshot['hpc_efficiency_smooth'] - prev_hpc)*100:.3f}%"
-        delta_egt = f"{current_snapshot['egt_margin_smooth'] - prev_egt:.2f} °R"
+        # Changed to calculate TOTAL degradation since Cycle 1
+        baseline_hpc = visible_data.iloc[0]['hpc_efficiency_smooth']
+        baseline_egt = visible_data.iloc[0]['egt_margin_smooth']
+        delta_hpc = f"{(current_snapshot['hpc_efficiency_smooth'] - baseline_hpc)*100:.3f}%"
+        delta_egt = f"{current_snapshot['egt_margin_smooth'] - baseline_egt:.2f} °R"
     else:
         delta_hpc = None
         delta_egt = None
