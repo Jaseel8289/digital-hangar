@@ -66,7 +66,7 @@ def process_cbn_data(filename):
             lambda x: MinMaxScaler().fit_transform(x.values.reshape(-1, 1)).flatten() if x.max() != x.min() else 0
         )
         
-    # Ground Truth RUL
+    # RUL
     max_cycles = raw_df.groupby('unit')['cycles'].max()
     raw_df['True_RUL'] = raw_df['unit'].map(max_cycles) - raw_df['cycles']
     norm_df['True_RUL'] = raw_df['True_RUL']
