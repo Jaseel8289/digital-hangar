@@ -155,9 +155,17 @@ def process_data(df):
     
     # --- LANE 1: Legacy XGBoost Processing (v2.0 & v3.0) ---
     gamma = 1.4
-    actual_rise = processed_df['s_3'] - processed_df['s_1']
-    pressure_ratio = processed_df['s_7'] - processed_df['s_5']
-    processed_df['hpc_efficiency'] = np.where(actual_rise > 0, 1.0 / actual_rise, 0)
+    gamma_exp = (gamma - 1.0) / gamma
+    
+    # Correct Isentropic Efficiency calculation using NASA C-MAPSS sensors
+    # s_7 (P30), s_5 (P2), s_3 (T30), s_2 (T24)
+    pr = processed_df['s_7'] / processed_df['s_5']
+    tr = processed_df['s_3'] / processed_df['s_2']
+    
+    ideal_rise = (pr ** gamma_exp) - 1.0
+    actual_rise_ratio = tr - 1.0
+    
+    processed_df['hpc_efficiency'] = np.where(actual_rise_ratio > 0, ideal_rise / actual_rise_ratio, 0)
     processed_df['egt_margin'] = 1440.0 - processed_df['s_4']
     processed_df['hpc_efficiency_smooth'] = processed_df.groupby('unit_number')['hpc_efficiency'].transform(lambda x: x.rolling(5, min_periods=1).mean())
     processed_df['egt_margin_smooth'] = processed_df.groupby('unit_number')['egt_margin'].transform(lambda x: x.rolling(5, min_periods=1).mean())
