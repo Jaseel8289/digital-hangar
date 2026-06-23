@@ -158,9 +158,9 @@ def process_data(df):
     gamma_exp = (gamma - 1.0) / gamma
     
     # Correct Isentropic Efficiency calculation using NASA C-MAPSS sensors
-    # s_7 (P30), s_5 (P2), s_3 (T30), s_2 (T24)
+    # s_7 (P30), s_5 (P2), s_3 (T30), s_1 (T2)
     pr = processed_df['s_7'] / processed_df['s_5']
-    tr = processed_df['s_3'] / processed_df['s_2']
+    tr = processed_df['s_3'] / processed_df['s_1']
     
     ideal_rise = (pr ** gamma_exp) - 1.0
     actual_rise_ratio = tr - 1.0
