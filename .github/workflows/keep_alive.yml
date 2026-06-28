@@ -1,0 +1,26 @@
+name: Keep Streamlit Apps Awake
+howd
+
+on:
+  schedule:
+    
+    - cron: '0 0,12 * * *'
+  
+
+  workflow_dispatch:
+
+jobs:
+  ping-dashboards:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Digital Hangar v4.0 (Benchmarking)
+       
+        run: |
+          echo "Pinging v4 Dashboard..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://digital-hangar-turbofan-prognostics.streamlit.app/
+
+      - name: Ping Digital Hangar v5.0 (PINN Ensemble)
+        run: |
+          echo "Pinging v5 Dashboard..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://pinn-degradation-model.streamlit.app/
