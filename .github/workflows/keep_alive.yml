@@ -1,0 +1,26 @@
+name: Keep Streamlit Apps Awake
+
+# This controls when the workflow runs
+on:
+  schedule:
+    # Runs at 00:00 and 12:00 UTC every day (Every 12 hours)
+    - cron: '0 0,12 * * *'
+  
+  # Allows you to run this workflow manually from the Actions tab if needed
+  workflow_dispatch:
+
+jobs:
+  ping-dashboards:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Digital Hangar v4.0 (Benchmarking)
+        # Uses curl to ping the website silently and just check the status
+        run: |
+          echo "Pinging v4 Dashboard..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://digital-hangar-turbofan-prognostics.streamlit.app/
+
+      - name: Ping Digital Hangar v5.0 (PINN Ensemble)
+        run: |
+          echo "Pinging v5 Dashboard..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://pinn-degradation-model.streamlit.app/
