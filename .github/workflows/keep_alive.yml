@@ -1,6 +1,4 @@
 name: Keep Streamlit Apps Awake
-howd
-
 on:
   schedule:
     
